@@ -1,0 +1,70 @@
+
+# Uses import-csv and export-excel function. Powershell version  5.
+# created script to edit the csv to include first line of the csv to be same as secondline
+#email notification on conversion of the the file
+# -----------------------------------------
+# Directory check
+$emailSmtpServer = "dtrfge.com"
+$scriptDir = (Split-Path 'csv location "\"
+Set-Location $scriptDir
+#capturing the location of the file paths
+cd PowerBIAudit
+$path=pwd 
+write-host "The location of the pwd is--"$path 
+#-------------------------------------------------Moving the file to archive folder 
+write-host "Moving the file to Archive folder"
+$date = Get-Date -format "yyyyMMdd"
+$arc_file="destination"+$date+".xlsx"
+$ExcelfileSD = "destination"
+#$arch="destination Archive"
+if (Test-Path $ExcelfileSD) 
+{
+  Move-Item -path $ExcelfileSD -Destination $arc_file
+}
+write-host ("Moved the file to Archive folder {0}" -f(Get-Date))
+#addinng a dummy line in the first row
+$csvedit="csv location"
+$content = Get-Content -Path $csvedit
+
+#read the first two lines
+$first_line= $content[0]
+$second_line= $content[1]
+#Write-Host $first_line
+#Write-Host $second_line
+#repalce the first_line with second_line
+$content[0]=$second_line
+#$first_line= $content[0]
+#$second_line= $content[1]
+#Write-Host $first_line
+#Write-Host $second_line
+#Save the file
+$content | Set-Content -Path $csvedit
+Start-Sleep -Seconds 60
+#-- ----------Import file function
+
+$csvsource="csv location"
+
+$Excelfile = "csv location"
+import-csv -Path $csvsource |export-excel -Path $Excelfile 
+write-host ("File has been converted {0}" -f(Get-Date))
+Start-Sleep -Seconds 120
+#------------------------------------------
+# To move output file from QA folder to SDrive folder 
+#location of starting directory
+Write-host "Moving file to destination "
+$sourcePath ="csv location"
+#location where files will be copied to 
+$destinationPath = "destination"
+#Copy-item -path $sourcePath -Destination $destinationPath
+
+Move-item -path $SourcePath -Destination $destinationPath
+Write-host "File moved to destination"
+
+$today = Get-date 
+$deleteDate = $today.AddDays(-60)
+    Get-ChildItem 'destination' | Where-Object { $_.LastWriteTime -lt $deleteDate } | Remove-Item
+Start-Sleep -Seconds 60
+    Send-MailMessage -From fjhfgjkg@.com -To fjhfgjkg@.com   -Subject "Conversion of the file is completed" -SmtpServer $emailSmtpServer -Body "Conversion of the file is completed." 
+	Send-MailMessage -From fjhfgjkg@.com  -To fjhfgjkg@.com   -Subject "Conversion of the file is completed" -SmtpServer $emailSmtpServer -Body "2.Conversion of the file is completed."
+exit 
+
