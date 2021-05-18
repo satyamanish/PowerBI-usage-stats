@@ -1,0 +1,316 @@
+
+# Notes
+# -----------------------------------------
+# # * Run with PowerShell version 5.1.15063.1088
+# -----------------------------------------
+# * Install the MSOnline for Azure Active Directory PowerShell module
+# Search-UnifiedAuditLog PowerShell cmdlet documentation:
+#    https://technet.microsoft.com/en-us/library/mt238501(v=exchg.160).aspx#Syntax
+#-----------------------------------------
+# * Microsoft account must have admin access to Audit Logs within Exchange Online
+# -----------------------------------------
+# * Run command to store encrypted user password in file:
+# Read-Host -Prompt "Enter password to encrypt: " -AsSecureString | ConvertFrom-SecureString | Out-File ".\secure.txt"
+# Without 'secure.txt' user will be prompted for login credentials
+# -----------------------------------------
+# * Exchange Error Handling
+# Exchange will sometimes cause an error not allowing for logs to be downloaded
+# When 0 logs are downloaded too many times, script will stop download and write to Teradata
+# Re-run script to start where Exchange error occurred
+# -----------------------------------------
+# * Logs are deleted by script 30 days after creation date
+# -----------------------------------------
+#>
+
+Write-Host "Changing directory..."
+# Change directory to location of script 
+$scriptDir = (Split-Path 'csv location') + "\"
+Set-Location $scriptDir
+
+# Check if logs directory exists
+$logPaths = Test-Path 'csv location'
+# Create logs directory if it does not exist
+If ($logPaths -ne 'True'){New-Item 'csv location' -Type Directory}
+
+# Start script timer start
+$scriptStartTime = Get-Date
+
+
+# -----------------------------------------
+# Create Temp/Log Files
+# -----------------------------------------
+$user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+$t = Get-Date -Format "yyyyMMddTHHmm"
+# Temporary log file for script
+New-Item log_$t.txt -type file
+$scriptLog = "\csv location"
+
+#Remove previously created tmp file
+$FileName = "csv location"
+if (Test-Path $FileName) 
+{
+  Remove-Item $FileName
+}
+
+
+Get-ChildItem -Path 'csv location' *.txt | foreach { Remove-Item -Path $_.FullName }
+
+#------------------------------------------
+# To archive previous output file 
+#location of starting directory
+$_sourcePath ="csv location"
+#location where files will be copied to 
+$_destinationPath = "csv location";
+#Array of extension that need to move from source path
+$_FileType= @("*xlsx*")
+ 
+Get-ChildItem -recurse ($_sourcePath) -include ($_FileType) | move-Item -Destination ($_destinationPath)
+
+#--------------------------------------------
+
+# New Temporary file to download Microsoft logs
+New-Item csv location -type file
+$exportPath = "csv location"
+
+# Write to log
+$t = Get-Date -Format "MM/dd/yyyy HH:mm:ss"
+$writeResults = $t + ": Script executed by $user"
+$writeResults | Out-File $scriptLog -Append
+$writeResults = $t + ": Log file created"
+$writeResults | Out-File $scriptLog -Append
+
+# -----------------------------------------
+# Temp File Cleanup
+# -----------------------------------------
+# -----------------------------------------
+# Declare variables
+# -----------------------------------------
+# Hash table for parsing
+$dictionary = @{}
+
+#Hours to increment start/end date when downloading logs
+$hours = 6
+$today = [datetime]"02/09/2021"   #Give today's date
+$maxdate = [datetime]"02/08/2021" #Give yesterday's date
+
+
+# Convert to $maxdate to datetime
+[DateTime]$start = $($maxdate -join [Environment]::NewLine)
+# Add 1 second to avoid getting duplicate logs
+$start = $start.AddSeconds(1)
+
+# Increment end date-time to get logs by X
+$end = $start.AddHours($hours)
+
+# Log counts
+$totalLogs = 0
+$logCount = 0
+
+# Error handling
+$errorcount = 0
+
+# Address for email notifications
+$uname = "username email id"
+
+# Email server
+$emailSmtpServer = "sdfgtdfg.com"
+
+# -----------------------------------------
+# MS Online credentials
+# Use Get-Credential for manual login
+# -----------------------------------------
+
+   $pass = ConvertTo-SecureString 'js12345' -AsPlainText -Force  #priyanka
+$UserCredential = New-Object System.Management.Automation.PSCredential ('pbilog.pbilog@meijer.com', $pass)
+
+# -----------------------------------------
+# Connect to MS Online
+# -----------------------------------------
+$downloadStartTime = Get-Date
+Write-Host "Logging in..."
+
+# Create the session to Exchange Online
+$Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/ -Credential $UserCredential -Authentication Basic -AllowRedirection
+
+# Import the Exchange Online commands
+Import-PSSession $Session
+
+# -----------------------------------------
+# Download logs from MS Online
+# -----------------------------------------
+Try {
+    # Download Microsoft logs while the incremented start date is less than today's date
+    Write-Host "Downloading logs..."
+    Do {
+        # Download logs within date range
+        $PowerBIAudits = Search-UnifiedAuditLog -StartDate $start -EndDate $end -RecordType PowerBIAudit -ResultSize 5000
+        #$PowerBIAudits = Search-UnifiedAuditLog -StartDate $start -EndDate $end -ResultSize 5000
+        # Count the number of logs in current search
+        $logCount = $PowerBIAudits.Count
+
+        If ($logCount -lt 5000 -and $logCount -gt 0){
+            # Add log count to running total
+            $totalLogs = $totalLogs + $logCount
+        
+            # Append results to CSV file    
+            $PowerBIAudits | Export-Csv $exportPath -Append
+        
+            # Write to log file
+            $t = Get-Date -Format "MM/dd/yyyy HH:mm:ss"
+            $writeResults = $t+": Range: "+$start+"-"+$end+" Logs: "+$logCount+" Total Logs: "+$totalLogs
+            $writeResults | Out-File $scriptLog -Append
+            Write-Host $writeResults
+
+            # Increment start and end date by $hours
+            $start = $start.AddHours($hours)
+            $end = $end.AddHours($hours)
+        }
+        # Due to limitations of API, only download 5000 logs at a time
+            ElseIf ($logCount -gt 5000 -or $logCount -eq 5000) {
+            # Decrease date range by 1 hour
+           #added 12/9/2019 - additional granuarity of quarter-hour added 
+            #IF($hours -eq 1/2){
+            #   $end = $end.AddHours(-1/4) 
+            #   $hours = $hours -1/4
+            #} ELSEIF ($hours -eq 1){
+            IF ($hours -eq 1){
+               $end = $end.AddHours(-1/4) 
+               $hours = $hours -1/4
+            } ELSE {
+               $hours = $hours -1
+               $end = $end.AddHours(-1)
+            }
+            # Write to log file
+            $t = Get-Date -Format "MM/dd/yyyy HH:mm:ss"
+            $writeResults = $t + ": Decreasing hour increment to $hours"
+            $writeResults | Out-File $scriptLog -Append
+            Write-Host $writeResults
+        }
+
+      # -----------------------------------------
+        # Exchange error handling - See note above 
+      # -----------------------------------------
+        ElseIf ($logCount -eq 0 -and $errorcount -gt 5) {
+            $t = Get-Date -Format "MM/dd/yyyy HH:mm:ss"
+            $writeResults = $t + ": Stopping download..."
+            $writeResults | Out-File $scriptLog -Append
+            Write-Host $writeResults
+            Break
+        }
+        ElseIf ($logCount -eq 0 -and -$errorcount -lt 6){
+            $writeResults = $t+":"+ " Range: "+$start+"-"+$end+" Logs: "+$logCount+" Total Logs: "+$totalLogs
+            $writeResults | Out-File $scriptLog -Append
+            Write-Host $writeResults
+            $errorcount = $errorcount + 1
+        }
+    }
+    # End when date increment reaches current date
+    While ($start -lt $today)
+    
+    # Disconnect from MS Online
+    Remove-PSSession $Session
+    # Calculate time to download current set of logs.
+    $downloadTime = $(get-date) - $downloadStartTime
+    # Write to log
+    $t = Get-Date -Format "MM/dd/yyyy HH:mm:ss"
+    $t+": Downloaded $totalLogs logs. Completed in $downloadTime" | Out-File $scriptLog -Append
+}
+
+catch {
+    $errorMessage = $_.Exception.Message
+    $errorMessage | Out-File $scriptLog -Append
+
+    # Email errors and stop script
+    #Send-MailMessage -From dfgdgf.com -To gdzgff.com -Subject "PBI Log Download Failed" -SmtpServer $emailSmtpServer -Body $errorMessage
+  
+    Write-Host $errorMessage
+    Remove-PSSession $Session
+    tmp-cleanup
+    Exit
+}
+# -----------------------------------------
+# Csv to Excel conversion
+# -----------------------------------------
+### Set input and output path
+$inputCSV = "csv location"
+
+# Remove previously created output excel file
+$Excelfile = "csv location"
+if (Test-Path $Excelfile) 
+{
+  Remove-Item $Excelfile
+}
+
+$outputXLSX = "csv location"
+
+### Create a new Excel Workbook with one empty sheet
+$excel = New-Object -ComObject excel.application 
+$workbook = $excel.Workbooks.Add(1)
+$worksheet = $workbook.worksheets.Item(1)
+
+### Build the QueryTables.Add command
+### QueryTables does the same as when clicking "Data » From Text" in Excel
+$TxtConnector = ("TEXT;" + $inputCSV)
+$Connector = $worksheet.QueryTables.add($TxtConnector,$worksheet.Range("A1"))
+$query = $worksheet.QueryTables.item($Connector.name)
+
+### Set the delimiter (, or ;) according to your regional settings
+$query.TextFileOtherDelimiter = $Excel.Application.International(5)
+
+### Set the format to delimited and text for every column
+### A trick to create an array of 2s is used with the preceding comma
+$query.TextFileParseType  = 1
+$query.TextFileColumnDataTypes = ,2 * $worksheet.Cells.Columns.Count
+$query.AdjustColumnWidth = 1
+
+### Execute & delete the import query
+$query.Refresh()
+$query.Delete()
+
+### Save & close the Workbook as XLSX. Change the output extension for Excel 2003
+$Workbook.SaveAs($outputXLSX,51)
+$excel.Quit()
+
+#------------------------------------------
+#Remove previously created output file from SDrive
+#------------------------------------------
+$ExcelfileSD = "destination path"
+if (Test-Path $ExcelfileSD) 
+{
+  Remove-Item $ExcelfileSD
+}
+
+#------------------------------------------
+# To move output file from QA folder to SDrive folder 
+#location of starting directory
+$_sourcePath1 ="csv location"
+
+#location where files will be copied to 
+$_destinationPath1 = "destination path";
+
+ 
+Move-item –path $_SourcePath1 –destination $_DestinationPath1
+# -----------------------------------------
+# Temp/Log file cleanup
+# -----------------------------------------
+Try{
+    Write-Host "Cleaning up temporary files..."
+    # Delete logs older than 30 days
+    $deleteDate = $today.AddDays(-60)
+    Get-ChildItem 'csv location' | Where-Object { $_.LastWriteTime -lt $deleteDate } | Remove-Item
+    # Write to log file
+    $t = Get-Date -Format "MM/dd/yyyy HH:mm:ss"
+    $t+": Deleted temp files" | Out-File $scriptLog -Append
+    tmp-cleanup
+    Exit
+}
+
+catch {
+    $errorMessage = $_.Exception.Message
+    $errorMessage | Out-File $scriptLog -Append
+    # Email errors and stop script
+    ##Send-MailMessage -From $uname -To $uname -Subject "PBI Log Cleanup Failed" -SmtpServer $emailSmtpServer -Body $errorMessage
+    Write-Host $errorMessage
+    tmp-cleanup
+    Exit
+}
